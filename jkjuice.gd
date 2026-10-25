@@ -4,6 +4,7 @@ extends EditorPlugin
 const EXPORT_TOOL_NAME := "Export Yalk Map..."
 const MAP_PATH := "res://map.tscn"
 const TEXTURES_DIR := "res://textures"
+const MANIFEST_PATH := "res://manifest.json"
 
 func _enter_tree() -> void:
 	add_tool_menu_item(EXPORT_TOOL_NAME, _show_export_dialog)
@@ -17,7 +18,7 @@ func _show_export_dialog() -> void:
 	file_dialog.access = EditorFileDialog.ACCESS_FILESYSTEM
 	file_dialog.add_filter("*.pck", "Godot Pack File")
 	file_dialog.title = "Choose where to save the Yalk map (.pck)"
-
+	
 	get_editor_interface().get_base_control().add_child(file_dialog)
 	file_dialog.file_selected.connect(_on_file_selected)
 	file_dialog.popup_file_dialog()
@@ -28,35 +29,39 @@ func _on_file_selected(output_pck_path: String) -> void:
 	if not FileAccess.file_exists(MAP_PATH):
 		printerr("[Yalk Map Export] Map scene not found: ", MAP_PATH)
 		return
-
 	var map_name := output_pck_path.get_file().get_basename().validate_filename()
 	if map_name.is_empty():
 		printerr("[Yalk Map Export] Invalid map name.")
 		return
-
 	var map_root := "res://maps/%s/" % map_name
 	var packer := PCKPacker.new()
 	var error: Error = packer.pck_start(output_pck_path)
-
 	if error != OK:
 		printerr("[Yalk Map Export] Failed to initialize PCKPacker. Error: ", error)
 		return
-
 	var scene_text := FileAccess.get_file_as_string(MAP_PATH)
 	scene_text = scene_text.replace("res://textures/", map_root + "textures/")
 	scene_text = _remove_uids(scene_text)
-
 	var scene_target := map_root + MAP_PATH.get_file()
 	error = _pack_text_file(packer, scene_target, scene_text, ".tscn")
-
 	if error != OK:
 		printerr("[Yalk Map Export] Failed to pack the map scene. Error: ", error)
 		return
-
 	var packed_count := 1
 	print("[Yalk Map Export] Packed: ", scene_target)
-
 	packed_count += _scan_directory_for_textures(TEXTURES_DIR, map_root, packer)
+	if FileAccess.file_exists(MANIFEST_PATH):
+		var manifest_target := map_root + "manifest.json"
+		var manifest_absolute_path := ProjectSettings.globalize_path(MANIFEST_PATH)
+		
+		error = packer.add_file(manifest_target, manifest_absolute_path)
+		if error == OK:
+			packed_count += 1
+			print("[Yalk Map Export] Packed: ", manifest_target)
+		else:
+			printerr("[Yalk Map Export] Failed to pack manifest.json. Error: ", error)
+	else:
+		print("[Yalk Map Export] Warning: manifest.json not found at ", MANIFEST_PATH)
 
 	error = packer.flush()
 
